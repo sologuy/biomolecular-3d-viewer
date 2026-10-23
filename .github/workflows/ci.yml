@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Functional Suite · Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.9', '3.10', '3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run CLI dry-run suite (inspect, closeup, viewer)
+        run: ./scripts/dryrun.sh
+
+      - name: Run isolated multi-harness installer tests
+        run: ./scripts/install-check.sh
+
+  hygiene:
+    name: Repository Hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Ensure no hardcoded credentials or private local paths
+        run: |
+          ! git grep -nIE 'gh[pousr]_[A-Za-z0-9]{20}|github_pat_[A-Za-z0-9_]{20}|sk-[a-zA-Z0-9]{20}|-----BEGIN [A-Z ]*PRIVATE KEY|/Users/[a-zA-Z0-9_-]+/' -- . \
+            || { echo "::error::Repository contains suspected credentials or hardcoded local user paths"; exit 1; }
+
+      - name: Validate shell and Python syntax
+        run: |
+          bash -n scripts/install.sh
+          bash -n scripts/install-check.sh
+          bash -n scripts/dryrun.sh
+          bash -n examples/run_demo.sh
+          python3 -m py_compile scripts/mol3d_canvas.py
